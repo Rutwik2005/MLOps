@@ -18,7 +18,7 @@ class User(Base):
     hashed_password = Column(String)
 
 class Dataset(Base):
-    __tablename__ = "datasets"
+    __tablename__ = "app_datasets"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     description = Column(String)
@@ -29,14 +29,14 @@ class Experiment(Base):
     __tablename__ = "app_experiments"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
-    dataset_id = Column(Integer, ForeignKey("datasets.id"))
+    dataset_id = Column(Integer, ForeignKey("app_datasets.id"))
     algorithm = Column(String)
     accuracy = Column(Float, nullable=True)
     run_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class RegisteredModel(Base):
-    __tablename__ = "registered_models"
+    __tablename__ = "app_registered_models"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
     experiment_id = Column(Integer, ForeignKey("app_experiments.id"))
@@ -47,7 +47,7 @@ class Deployment(Base):
     __tablename__ = "deployments"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
-    model_id = Column(Integer, ForeignKey("registered_models.id"))
+    model_id = Column(Integer, ForeignKey("app_registered_models.id"))
     endpoint = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
