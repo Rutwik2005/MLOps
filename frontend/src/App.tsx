@@ -1,10 +1,11 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Toaster, toast } from 'react-hot-toast';
 import { 
   LayoutDashboard, Database, BrainCircuit, Rocket, Activity, 
-  LogOut, UploadCloud, Play, Plus, Box, CheckCircle2, ChevronRight
+  LogOut, UploadCloud, Play, Plus, Box, CheckCircle2, ChevronRight,
+  Sun, Moon
 } from 'lucide-react';
 
 const API_URL = 'http://localhost:8000/api/v1';
@@ -473,6 +474,14 @@ const NavItem = ({ to, icon: Icon, children }: any) => {
 
 export default function App() {
   const [auth, setAuth] = useState(!!localStorage.getItem('token'));
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
   
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -480,8 +489,18 @@ export default function App() {
     toast("Logged out");
   };
 
+  const renderThemeToggle = (fixed: boolean = false) => (
+    <button 
+      onClick={toggleTheme} 
+      className={`theme-toggle ${fixed ? 'theme-toggle-fixed' : ''}`} 
+      aria-label="Toggle theme"
+    >
+      {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+    </button>
+  );
+
   if (!auth) {
-    return <><Toaster position="top-right" /><Router><Login setAuth={setAuth} /></Router></>;
+    return <><Toaster position="top-right" />{renderThemeToggle(true)}<Router><Login setAuth={setAuth} /></Router></>;
   }
 
   return (
@@ -506,10 +525,11 @@ export default function App() {
             <NavItem to="/predict" icon={Rocket}>Predictions</NavItem>
           </nav>
           
-          <div className="p-4 border-t border-slate-100">
-            <button onClick={handleLogout} className="flex items-center w-full px-4 py-2 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors">
+          <div className="p-4 border-t border-slate-100 flex items-center justify-between gap-2">
+            <button onClick={handleLogout} className="flex items-center flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors">
               <LogOut size={18} className="mr-3" /> Logout
             </button>
+            {renderThemeToggle(false)}
           </div>
         </aside>
 

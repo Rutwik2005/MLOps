@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -44,6 +44,22 @@ def get_db():
 @app.on_event("startup")
 def startup_event():
     init_minio()
+    # Auto-load existing deployments into memory on startup
+    db = SessionLocal()
+    try:
+        deployments = db.query(Deployment).all()
+        for dep in deployments:
+            model_record = db.query(RegisteredModel).filter(RegisteredModel.id == dep.model_id).first()
+            if model_record:
+                exp = db.query(Experiment).filter(Experiment.id == model_record.experiment_id).first()
+                if exp and exp.run_id:
+                    try:
+                        deployed_models[dep.name] = load_mlflow_model(exp.run_id)
+                        print(f"Auto-loaded deployed model: {dep.name}")
+                    except Exception as e:
+                        print(f"Failed to auto-load model {dep.name}: {e}")
+    finally:
+        db.close()
 
 # Auth Utils
 def verify_password(plain_password, hashed_password):
@@ -176,16 +192,29 @@ def get_deployments(db: Session = Depends(get_db), current_user: User = Depends(
 
 # Prediction
 @app.post("/api/v1/predict/{deployment_name}")
-def predict(deployment_name: str, req: PredictionRequest):
+def predict(deployment_name: str, req: PredictionRequest, db: Session = Depends(get_db)):
     if deployment_name not in deployed_models:
-        raise HTTPException(status_code=404, detail="Deployment not found or model not loaded in memory")
-    
+        # Fallback: lazy load model on-demand from DB and MLflow
+        dep = db.query(Deployment).filter(Deployment.name == deployment_name).first()
+        if not dep:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        model_record = db.query(RegisteredModel).filter(RegisteredModel.id == dep.model_id).first()
+        if not model_record:
+            raise HTTPException(status_code=404, detail="Model record not found")
+        exp = db.query(Experiment).filter(Experiment.id == model_record.experiment_id).first()
+        if not exp or not exp.run_id:
+            raise HTTPException(status_code=404, detail="Experiment run not found")
+        try:
+            deployed_models[deployment_name] = load_mlflow_model(exp.run_id)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
     model = deployed_models[deployment_name]
     df = pd.DataFrame([req.features])
     
     prediction = model.predict(df)
     
     return {
-        "prediction": prediction[0].item() if hasattr(prediction[0], 'item') else prediction[0],
+        "prediction": str(prediction[0].item() if hasattr(prediction[0], 'item') else prediction[0]),
         "deployment": deployment_name
     }
