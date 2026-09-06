@@ -50,6 +50,18 @@ To stop and remove all running containers:
 docker-compose down
 ```
 
+To stop the services and remove their Docker images too:
+
+```bash
+docker-compose down --rmi all
+```
+
+To remove unused Docker resources system-wide:
+
+```bash
+docker system prune -a
+```
+
 ---
 
 ## Service Endpoints
