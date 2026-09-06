@@ -24,13 +24,19 @@ git clone https://github.com/neelwankhade007-rgb/MLOps-Neel.git
 cd MLOps-Neel
 ```
 
-### Step 2: Build and Start All Services
+### Step 2: Build Docker Images
 
 ```bash
-docker-compose up --build -d
+docker-compose build
 ```
 
-### Step 3: Verify Running Containers
+### Step 3: Start All Services
+
+```bash
+docker-compose up -d
+```
+
+### Step 4: Verify Running Containers
 
 ```bash
 docker-compose ps
