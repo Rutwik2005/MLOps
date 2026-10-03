@@ -190,11 +190,84 @@ def deploy_model(model_id: int, req: DeploymentCreate, db: Session = Depends(get
 def get_deployments(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Deployment).all()
 
+from ml_utils import download_dataset
+
+@app.get("/api/v1/deployments/{deployment_name}/schema")
+def get_deployment_schema(deployment_name: str, db: Session = Depends(get_db)):
+    dep = db.query(Deployment).filter(Deployment.name == deployment_name).first()
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+        
+    model_record = db.query(RegisteredModel).filter(RegisteredModel.id == dep.model_id).first()
+    exp = db.query(Experiment).filter(Experiment.id == model_record.experiment_id).first()
+    dataset = db.query(Dataset).filter(Dataset.id == exp.dataset_id).first()
+    
+    if deployment_name not in deployed_models:
+        try:
+            deployed_models[deployment_name] = load_mlflow_model(exp.run_id)
+        except Exception as e:
+            pass
+            
+    expected_features = []
+    if deployment_name in deployed_models:
+        model = deployed_models[deployment_name]
+        if hasattr(model, '_model_impl') and hasattr(model._model_impl, 'sklearn_model'):
+            expected_features = list(model._model_impl.sklearn_model.feature_names_in_)
+        elif hasattr(model, '_model_impl') and hasattr(model._model_impl, 'xgb_model'):
+            expected_features = list(model._model_impl.xgb_model.feature_names)
+            
+    df = download_dataset(dataset.file_path)
+    
+    features = []
+    target_column = None
+    
+    for col in df.columns:
+        is_feature = False
+        if expected_features:
+            if col in expected_features:
+                is_feature = True
+            else:
+                for ef in expected_features:
+                    if ef.startswith(f"{col}_"):
+                        is_feature = True
+                        break
+        else:
+            is_feature = True
+            
+        if not is_feature and expected_features:
+            target_column = col
+            continue
+            
+        col_type = str(df[col].dtype)
+        feature_type = "string"
+        options = []
+        if "int" in col_type or "float" in col_type:
+            feature_type = "number"
+        elif "bool" in col_type:
+            feature_type = "boolean"
+        elif "object" in col_type or "category" in col_type:
+            feature_type = "categorical"
+            options = df[col].dropna().unique().tolist()
+            
+        features.append({
+            "name": col,
+            "type": feature_type,
+            "required": True,
+            "options": options
+        })
+        
+    return {
+        "deployment_id": dep.id,
+        "model_name": model_record.name,
+        "model_version": model_record.version,
+        "target_column": target_column,
+        "features": features
+    }
+
 # Prediction
 @app.post("/api/v1/predict/{deployment_name}")
 def predict(deployment_name: str, req: PredictionRequest, db: Session = Depends(get_db)):
     if deployment_name not in deployed_models:
-        # Fallback: lazy load model on-demand from DB and MLflow
         dep = db.query(Deployment).filter(Deployment.name == deployment_name).first()
         if not dep:
             raise HTTPException(status_code=404, detail="Deployment not found")
@@ -212,7 +285,16 @@ def predict(deployment_name: str, req: PredictionRequest, db: Session = Depends(
     model = deployed_models[deployment_name]
     df = pd.DataFrame([req.features])
     
-    prediction = model.predict(df)
+    df_dummies = pd.get_dummies(df)
+    
+    if hasattr(model, '_model_impl') and hasattr(model._model_impl, 'sklearn_model'):
+        expected_features = model._model_impl.sklearn_model.feature_names_in_
+        df_dummies = df_dummies.reindex(columns=expected_features, fill_value=0)
+    elif hasattr(model, '_model_impl') and hasattr(model._model_impl, 'xgb_model'):
+        expected_features = model._model_impl.xgb_model.feature_names
+        df_dummies = df_dummies.reindex(columns=expected_features, fill_value=0)
+        
+    prediction = model.predict(df_dummies)
     
     return {
         "prediction": str(prediction[0].item() if hasattr(prediction[0], 'item') else prediction[0]),
