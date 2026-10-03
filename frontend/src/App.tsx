@@ -1,10 +1,11 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Toaster, toast } from 'react-hot-toast';
 import { 
   LayoutDashboard, Database, BrainCircuit, Rocket, Activity, 
-  LogOut, UploadCloud, Play, Plus, Box, CheckCircle2, ChevronRight
+  LogOut, UploadCloud, Play, Plus, Box, CheckCircle2, ChevronRight,
+  Sun, Moon
 } from 'lucide-react';
 
 const API_URL = 'http://localhost:8000/api/v1';
@@ -386,25 +387,164 @@ function Registry() {
 function Predict() {
   const [deployments, setDeployments] = useState<any[]>([]);
   const [selectedDeploy, setSelectedDeploy] = useState('');
-  const [features, setFeatures] = useState('');
+  const [featureList, setFeatureList] = useState<any[]>([]);
+  const [inputs, setInputs] = useState<Record<string, any>>({});
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingSchema, setLoadingSchema] = useState(false);
+  const [schemaError, setSchemaError] = useState('');
 
   useEffect(() => {
     axios.get(`${API_URL}/deployments`).then(res => setDeployments(res.data)).catch(console.error);
   }, []);
 
+  const getModelFeatures = (dep: any): string[] => {
+    if (!dep) return [];
+
+    const targetCol = (
+      dep.target_column ||
+      dep.target_col ||
+      dep.target ||
+      dep.output_column ||
+      dep.output ||
+      dep.label_column ||
+      dep.model?.target_column ||
+      dep.model?.target ||
+      dep.model?.output_column ||
+      ''
+    ).toString().trim().toLowerCase();
+
+    const candidates =
+      dep.features ??
+      dep.input_columns ??
+      dep.input_features ??
+      dep.columns ??
+      dep.inputs ??
+      dep.feature_names ??
+      dep.feature_names_in_ ??
+      dep.model?.features ??
+      dep.model?.input_columns ??
+      dep.model?.input_features ??
+      dep.model?.columns ??
+      dep.model?.inputs ??
+      dep.model?.feature_names ??
+      dep.schema?.inputs ??
+      [];
+
+    let list: string[] = [];
+
+    if (Array.isArray(candidates)) {
+      list = candidates.map((item: any) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          return item.name || item.field || item.column || item.feature || item.title || String(item);
+        }
+        return String(item);
+      });
+    } else if (candidates && typeof candidates === 'object') {
+      list = Object.keys(candidates);
+    } else if (typeof candidates === 'string') {
+      try {
+        const parsed = JSON.parse(candidates);
+        if (Array.isArray(parsed)) {
+          list = parsed.map(String);
+        } else if (parsed && typeof parsed === 'object') {
+          list = Object.keys(parsed);
+        } else {
+          list = candidates.split(',').map((s: string) => s.trim()).filter(Boolean);
+        }
+      } catch {
+        list = candidates.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+    }
+
+    if (targetCol) {
+      list = list.filter(c => c.trim().toLowerCase() !== targetCol);
+    }
+
+    return list;
+  };
+
+  const formatLabel = (name: string) => {
+    if (!name) return '';
+    if (name.toLowerCase() === 'bmi') return 'BMI';
+    if (name.toLowerCase() === 'id') return 'ID';
+    return name
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase());
+  };
+
+  const handleDeployChange = async (deployName: string) => {
+    setSelectedDeploy(deployName);
+    setSchemaError('');
+    if (!deployName) {
+      setFeatureList([]);
+      setInputs({});
+      return;
+    }
+    
+    setLoadingSchema(true);
+    try {
+      const res = await axios.get(`${API_URL}/deployments/${deployName}/schema`);
+      const schema = res.data;
+      const features = schema.features || [];
+      if (features.length > 0) {
+        setFeatureList(features);
+        const initial: Record<string, string> = {};
+        features.forEach((f: any) => { initial[f.name] = ''; });
+        setInputs(initial);
+      } else {
+        setFeatureList([]);
+        setInputs({});
+      }
+    } catch (err: any) {
+      setFeatureList([]);
+      setInputs({});
+      setSchemaError(err.response?.data?.detail || 'Unable to load model inputs.');
+    } finally {
+      setLoadingSchema(false);
+    }
+  };
+
+  const handleInputChange = (featureName: string, value: string) => {
+    setInputs(prev => ({
+      ...prev,
+      [featureName]: value
+    }));
+  };
+
   const handlePredict = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDeploy) return toast.error("Select a deployment");
+    if (featureList.length === 0) return toast.error("No features defined for this model");
+
     setLoading(true);
     try {
-      const parsedFeatures = JSON.parse(features);
-      const res = await axios.post(`${API_URL}/predict/${selectedDeploy}`, { features: parsedFeatures });
+      const payload: Record<string, any> = {};
+      featureList.forEach(feature => {
+        const col = feature.name;
+        const val = inputs[col];
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+          const trimmed = String(val).trim();
+          if (!isNaN(Number(trimmed))) {
+            payload[col] = Number(trimmed);
+          } else if (trimmed.toLowerCase() === 'true') {
+            payload[col] = true;
+          } else if (trimmed.toLowerCase() === 'false') {
+            payload[col] = false;
+          } else {
+            payload[col] = trimmed;
+          }
+        } else {
+          payload[col] = '';
+        }
+      });
+
+      const res = await axios.post(`${API_URL}/predict/${selectedDeploy}`, { features: payload });
       setResult(res.data.prediction);
       toast.success("Prediction successful");
-    } catch (err) {
-      toast.error('Prediction failed. Ensure valid JSON payload.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Prediction failed');
     } finally {
       setLoading(false);
     }
@@ -422,16 +562,78 @@ function Predict() {
           <form onSubmit={handlePredict} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Target Endpoint</label>
-              <select className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white" value={selectedDeploy} onChange={e => setSelectedDeploy(e.target.value)} required>
+              <select className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white" value={selectedDeploy} onChange={e => handleDeployChange(e.target.value)} required>
                 <option value="">-- Select Deployment --</option>
                 {deployments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
               </select>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Feature Payload (JSON)</label>
-              <textarea className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm h-48 bg-slate-50" value={features} onChange={e => setFeatures(e.target.value)} placeholder="{\n  &quot;feature1&quot;: 1.5,\n  &quot;feature2&quot;: 0\n}" required />
+              <label className="block text-sm font-medium text-slate-700 mb-2">Model Inputs</label>
+              {!selectedDeploy ? (
+                <div className="py-8 text-center text-slate-400 text-sm border border-dashed border-slate-200 rounded-lg">
+                  Select a deployment to view model inputs
+                </div>
+              ) : loadingSchema ? (
+                <div className="py-6 text-center text-slate-400 text-sm border border-dashed border-slate-200 rounded-lg">
+                  Loading model inputs...
+                </div>
+              ) : schemaError ? (
+                <div className="py-6 text-center text-red-400 text-sm border border-dashed border-red-200 rounded-lg">
+                  {schemaError}
+                  <button type="button" onClick={() => handleDeployChange(selectedDeploy)} className="ml-2 underline hover:text-red-600">Retry</button>
+                </div>
+              ) : featureList.length === 0 ? (
+                <div className="py-6 text-center text-slate-400 text-sm border border-dashed border-slate-200 rounded-lg">
+                  No input features are available for this deployment.
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                  {featureList.map(feature => (
+                    <div key={feature.name}>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">
+                        {formatLabel(feature.name)} {feature.required && <span className="text-red-500">*</span>}
+                      </label>
+                      {feature.type === 'categorical' && feature.options?.length > 0 ? (
+                        <select
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                          value={inputs[feature.name] ?? ''}
+                          onChange={(e: any) => handleInputChange(feature.name, e.target.value)}
+                          required={feature.required}
+                        >
+                          <option value="">-- Select {formatLabel(feature.name)} --</option>
+                          {feature.options.map((opt: string) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : feature.type === 'boolean' ? (
+                        <select
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                          value={inputs[feature.name] ?? ''}
+                          onChange={(e: any) => handleInputChange(feature.name, e.target.value)}
+                          required={feature.required}
+                        >
+                          <option value="">-- Select --</option>
+                          <option value="true">True</option>
+                          <option value="false">False</option>
+                        </select>
+                      ) : (
+                        <Input
+                          type={feature.type === 'number' ? 'number' : 'text'}
+                          step={feature.type === 'number' ? 'any' : undefined}
+                          placeholder={`Enter ${formatLabel(feature.name)}`}
+                          value={inputs[feature.name] ?? ''}
+                          onChange={(e: any) => handleInputChange(feature.name, e.target.value)}
+                          required={feature.required}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <Button type="submit" disabled={loading} className="w-full py-2.5">
+
+            <Button type="submit" disabled={loading || featureList.length === 0} className="w-full py-2.5">
                {loading ? 'Processing...' : 'Run Prediction'}
             </Button>
           </form>
@@ -450,7 +652,7 @@ function Predict() {
             ) : (
               <div className="text-slate-400 flex flex-col items-center">
                 <Activity size={32} className="mb-2 opacity-50" />
-                <p className="text-sm">Submit a payload to see results</p>
+                <p className="text-sm">Submit inputs to see results</p>
               </div>
             )}
           </Card>
@@ -473,6 +675,14 @@ const NavItem = ({ to, icon: Icon, children }: any) => {
 
 export default function App() {
   const [auth, setAuth] = useState(!!localStorage.getItem('token'));
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
   
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -480,8 +690,18 @@ export default function App() {
     toast("Logged out");
   };
 
+  const renderThemeToggle = (fixed: boolean = false) => (
+    <button 
+      onClick={toggleTheme} 
+      className={`theme-toggle ${fixed ? 'theme-toggle-fixed' : ''}`} 
+      aria-label="Toggle theme"
+    >
+      {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+    </button>
+  );
+
   if (!auth) {
-    return <><Toaster position="top-right" /><Router><Login setAuth={setAuth} /></Router></>;
+    return <><Toaster position="top-right" />{renderThemeToggle(true)}<Router><Login setAuth={setAuth} /></Router></>;
   }
 
   return (
@@ -506,10 +726,11 @@ export default function App() {
             <NavItem to="/predict" icon={Rocket}>Predictions</NavItem>
           </nav>
           
-          <div className="p-4 border-t border-slate-100">
-            <button onClick={handleLogout} className="flex items-center w-full px-4 py-2 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors">
+          <div className="p-4 border-t border-slate-100 flex items-center justify-between gap-2">
+            <button onClick={handleLogout} className="flex items-center flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors">
               <LogOut size={18} className="mr-3" /> Logout
             </button>
+            {renderThemeToggle(false)}
           </div>
         </aside>
 

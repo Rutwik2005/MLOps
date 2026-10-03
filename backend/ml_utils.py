@@ -1,4 +1,4 @@
-﻿import os
+import os
 import boto3
 import pandas as pd
 import mlflow
@@ -48,11 +48,42 @@ def train_model(dataset_filename: str, target_column: str, algorithm: str):
     df = df.dropna() # handle missing basically
     
     X = df.drop(columns=[target_column])
+    
+    # Drop identifier columns (where all values are unique)
+    identifiers = [col for col in X.columns if X[col].nunique() == len(X) and str(X[col].dtype) in ['object', 'int64']]
+    if identifiers:
+        X = X.drop(columns=identifiers)
+        
+    original_features = []
+    for col in X.columns:
+        col_type = str(X[col].dtype)
+        feature_type = "string"
+        options = []
+        if "int" in col_type or "float" in col_type:
+            feature_type = "number"
+        elif "bool" in col_type:
+            feature_type = "boolean"
+        elif "object" in col_type or "category" in col_type:
+            feature_type = "categorical"
+            options = X[col].dropna().unique().tolist()
+            
+        original_features.append({
+            "name": col,
+            "type": feature_type,
+            "required": True,
+            "options": options
+        })
+        
+    explicit_schema = {
+        "target_column": target_column,
+        "features": original_features
+    }
+    
     # Encode categoricals basically
-    X = pd.get_dummies(X)
+    X_dummies = pd.get_dummies(X)
     y = df[target_column]
     
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X_dummies, y, test_size=0.2, random_state=42)
     
     if algorithm == "Logistic Regression":
         model = LogisticRegression(max_iter=1000)
@@ -79,6 +110,8 @@ def train_model(dataset_filename: str, target_column: str, algorithm: str):
             mlflow.xgboost.log_model(model, "model")
         else:
             mlflow.sklearn.log_model(model, "model")
+            
+        mlflow.log_dict(explicit_schema, "explicit_schema.json")
             
         return acc, run.info.run_id
 
