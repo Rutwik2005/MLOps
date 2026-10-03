@@ -208,6 +208,19 @@ def get_deployment_schema(deployment_name: str, db: Session = Depends(get_db)):
         except Exception as e:
             pass
             
+    try:
+        import mlflow
+        explicit_schema = mlflow.artifacts.load_dict(f"runs:/{exp.run_id}/explicit_schema.json")
+        return {
+            "deployment_id": dep.id,
+            "model_name": model_record.name,
+            "model_version": model_record.version,
+            "target_column": explicit_schema.get("target_column"),
+            "features": explicit_schema.get("features")
+        }
+    except Exception:
+        pass
+            
     expected_features = []
     if deployment_name in deployed_models:
         model = deployed_models[deployment_name]
@@ -222,6 +235,9 @@ def get_deployment_schema(deployment_name: str, db: Session = Depends(get_db)):
     target_column = None
     
     for col in df.columns:
+        if df[col].nunique() == len(df) and str(df[col].dtype) in ['object', 'int64']:
+            continue
+            
         is_feature = False
         if expected_features:
             if col in expected_features:
