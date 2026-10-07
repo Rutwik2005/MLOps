@@ -49,3 +49,9 @@ desktop.ini
 *.log
 tmp/
 temp/
+
+categorical.csv
+mixed.csv
+numeric.csv
+test_housing.csv
+

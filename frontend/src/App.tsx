@@ -8,11 +8,12 @@ import {
   Sun, Moon
 } from 'lucide-react';
 
-const API_URL = 'http://localhost:8000/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
-let globalLogout = () => {
+let globalLogout = (showMessage = true) => {
   localStorage.removeItem('token');
   localStorage.removeItem('backend_session_id');
+  if (showMessage) toast.error('Session expired. Please log in again.');
   window.location.href = '/'; 
 };
 
@@ -703,9 +704,10 @@ export default function App() {
   }, [theme]);
   
   useEffect(() => {
-    globalLogout = () => {
+    globalLogout = (showMessage = true) => {
       localStorage.removeItem('token');
       localStorage.removeItem('backend_session_id');
+      if (showMessage) toast.error('Session expired. Please log in again.');
       setAuth(false);
     };
 
@@ -754,7 +756,7 @@ export default function App() {
   const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
   
   const handleLogout = () => {
-    globalLogout();
+    globalLogout(false);
     toast("Logged out");
   };
 

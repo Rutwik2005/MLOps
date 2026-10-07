@@ -129,10 +129,15 @@ def create_dataset(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Upload to MinIO
-    filename = f"{datetime.utcnow().timestamp()}_{file.filename}"
-    s3_path = upload_dataset(file.file, filename)
-    
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported")
+        
+    try:
+        filename = f"{datetime.utcnow().timestamp()}_{file.filename}"
+        s3_path = upload_dataset(file.file, filename)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Storage error: {str(e)}")
+        
     dataset = Dataset(name=name, description=description, file_path=filename)
     db.add(dataset)
     db.commit()
@@ -150,7 +155,10 @@ def start_training(req: ExperimentCreate, db: Session = Depends(get_db), current
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
         
-    acc, run_id = train_model(dataset.file_path, req.target_column, req.algorithm)
+    try:
+        acc, run_id = train_model(dataset.file_path, req.target_column, req.algorithm)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Training failed: {str(e)}")
     
     exp = Experiment(name=f"{dataset.name}_{req.algorithm}", dataset_id=dataset.id, algorithm=req.algorithm, accuracy=acc, run_id=run_id)
     db.add(exp)
@@ -179,6 +187,10 @@ def get_models(db: Session = Depends(get_db), current_user: User = Depends(get_c
 # Deployment
 @app.post("/api/v1/models/{model_id}/deploy")
 def deploy_model(model_id: int, req: DeploymentCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    existing = db.query(Deployment).filter(Deployment.name == req.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Deployment name already exists")
+        
     model_record = db.query(RegisteredModel).filter(RegisteredModel.id == model_id).first()
     if not model_record:
         raise HTTPException(status_code=404, detail="Model not found")
