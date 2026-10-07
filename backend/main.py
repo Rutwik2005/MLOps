@@ -13,10 +13,13 @@ from models import (
 )
 from ml_utils import init_minio, upload_dataset, train_model, load_mlflow_model
 
+import uuid
+
 # Constants
 SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+BACKEND_SESSION_ID = str(uuid.uuid4())
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
@@ -102,10 +105,20 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 @app.post("/api/v1/auth/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    if not user:
+        raise HTTPException(status_code=400, detail="Account does not exist")
+    if not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect password")
     access_token = create_access_token(data={"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "backend_session_id": BACKEND_SESSION_ID
+    }
+
+@app.get("/api/v1/auth/session")
+def get_session_info():
+    return {"session_id": BACKEND_SESSION_ID}
 
 # Dataset Routes
 @app.post("/api/v1/datasets")
@@ -200,14 +213,7 @@ def get_deployment_schema(deployment_name: str, db: Session = Depends(get_db)):
         
     model_record = db.query(RegisteredModel).filter(RegisteredModel.id == dep.model_id).first()
     exp = db.query(Experiment).filter(Experiment.id == model_record.experiment_id).first()
-    dataset = db.query(Dataset).filter(Dataset.id == exp.dataset_id).first()
     
-    if deployment_name not in deployed_models:
-        try:
-            deployed_models[deployment_name] = load_mlflow_model(exp.run_id)
-        except Exception as e:
-            pass
-            
     try:
         import mlflow
         explicit_schema = mlflow.artifacts.load_dict(f"runs:/{exp.run_id}/explicit_schema.json")
@@ -216,101 +222,75 @@ def get_deployment_schema(deployment_name: str, db: Session = Depends(get_db)):
             "model_name": model_record.name,
             "model_version": model_record.version,
             "target_column": explicit_schema.get("target_column"),
-            "features": explicit_schema.get("features")
+            "features": explicit_schema.get("features"),
+            "encoded_columns": explicit_schema.get("encoded_columns")
         }
     except Exception:
-        pass
-            
-    expected_features = []
-    if deployment_name in deployed_models:
-        model = deployed_models[deployment_name]
-        if hasattr(model, '_model_impl') and hasattr(model._model_impl, 'sklearn_model'):
-            expected_features = list(model._model_impl.sklearn_model.feature_names_in_)
-        elif hasattr(model, '_model_impl') and hasattr(model._model_impl, 'xgb_model'):
-            expected_features = list(model._model_impl.xgb_model.feature_names)
-            
-    df = download_dataset(dataset.file_path)
-    
-    features = []
-    target_column = None
-    
-    for col in df.columns:
-        if df[col].nunique() == len(df) and str(df[col].dtype) in ['object', 'int64']:
-            continue
-            
-        is_feature = False
-        if expected_features:
-            if col in expected_features:
-                is_feature = True
-            else:
-                for ef in expected_features:
-                    if ef.startswith(f"{col}_"):
-                        is_feature = True
-                        break
-        else:
-            is_feature = True
-            
-        if not is_feature and expected_features:
-            target_column = col
-            continue
-            
-        col_type = str(df[col].dtype)
-        feature_type = "string"
-        options = []
-        if "int" in col_type or "float" in col_type:
-            feature_type = "number"
-        elif "bool" in col_type:
-            feature_type = "boolean"
-        elif "object" in col_type or "category" in col_type:
-            feature_type = "categorical"
-            options = df[col].dropna().unique().tolist()
-            
-        features.append({
-            "name": col,
-            "type": feature_type,
-            "required": True,
-            "options": options
-        })
-        
-    return {
-        "deployment_id": dep.id,
-        "model_name": model_record.name,
-        "model_version": model_record.version,
-        "target_column": target_column,
-        "features": features
-    }
+        raise HTTPException(status_code=404, detail="Schema not found for this deployment.")
 
 # Prediction
 @app.post("/api/v1/predict/{deployment_name}")
 def predict(deployment_name: str, req: PredictionRequest, db: Session = Depends(get_db)):
+    dep = db.query(Deployment).filter(Deployment.name == deployment_name).first()
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    model_record = db.query(RegisteredModel).filter(RegisteredModel.id == dep.model_id).first()
+    if not model_record:
+        raise HTTPException(status_code=404, detail="Model record not found")
+    exp = db.query(Experiment).filter(Experiment.id == model_record.experiment_id).first()
+    if not exp or not exp.run_id:
+        raise HTTPException(status_code=404, detail="Experiment run not found")
+        
     if deployment_name not in deployed_models:
-        dep = db.query(Deployment).filter(Deployment.name == deployment_name).first()
-        if not dep:
-            raise HTTPException(status_code=404, detail="Deployment not found")
-        model_record = db.query(RegisteredModel).filter(RegisteredModel.id == dep.model_id).first()
-        if not model_record:
-            raise HTTPException(status_code=404, detail="Model record not found")
-        exp = db.query(Experiment).filter(Experiment.id == model_record.experiment_id).first()
-        if not exp or not exp.run_id:
-            raise HTTPException(status_code=404, detail="Experiment run not found")
         try:
             deployed_models[deployment_name] = load_mlflow_model(exp.run_id)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    import mlflow
+    try:
+        explicit_schema = mlflow.artifacts.load_dict(f"runs:/{exp.run_id}/explicit_schema.json")
+    except Exception:
+        raise HTTPException(status_code=404, detail="Schema not found for deployment.")
+
+    features_schema = explicit_schema.get("features", [])
+    
+    # Input validation
+    for feature in features_schema:
+        fname = feature["name"]
+        if feature.get("required", False) and fname not in req.features:
+            raise HTTPException(status_code=400, detail=f"Missing required feature: {fname}")
+        if fname in req.features:
+            val = req.features[fname]
+            if feature["type"] == "number" and not isinstance(val, (int, float)):
+                try:
+                    req.features[fname] = float(val)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Invalid numeric value for {fname}")
+            elif feature["type"] == "categorical" and feature.get("options") and val not in feature["options"]:
+                raise HTTPException(status_code=400, detail=f"Unknown categorical value for {fname}: {val}. Allowed: {feature['options']}")
 
     model = deployed_models[deployment_name]
     df = pd.DataFrame([req.features])
     
     df_dummies = pd.get_dummies(df)
     
-    if hasattr(model, '_model_impl') and hasattr(model._model_impl, 'sklearn_model'):
-        expected_features = model._model_impl.sklearn_model.feature_names_in_
+    expected_features = explicit_schema.get("encoded_columns", [])
+    if expected_features:
         df_dummies = df_dummies.reindex(columns=expected_features, fill_value=0)
-    elif hasattr(model, '_model_impl') and hasattr(model._model_impl, 'xgb_model'):
-        expected_features = model._model_impl.xgb_model.feature_names
-        df_dummies = df_dummies.reindex(columns=expected_features, fill_value=0)
-        
-    prediction = model.predict(df_dummies)
+    else:
+        # Fallback for old models
+        if hasattr(model, '_model_impl') and hasattr(model._model_impl, 'sklearn_model'):
+            expected_features = model._model_impl.sklearn_model.feature_names_in_
+            df_dummies = df_dummies.reindex(columns=expected_features, fill_value=0)
+        elif hasattr(model, '_model_impl') and hasattr(model._model_impl, 'xgb_model'):
+            expected_features = model._model_impl.xgb_model.feature_names
+            df_dummies = df_dummies.reindex(columns=expected_features, fill_value=0)
+            
+    try:
+        prediction = model.predict(df_dummies)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
     
     return {
         "prediction": str(prediction[0].item() if hasattr(prediction[0], 'item') else prediction[0]),

@@ -74,13 +74,14 @@ def train_model(dataset_filename: str, target_column: str, algorithm: str):
             "options": options
         })
         
-    explicit_schema = {
-        "target_column": target_column,
-        "features": original_features
-    }
-    
     # Encode categoricals basically
     X_dummies = pd.get_dummies(X)
+    
+    explicit_schema = {
+        "target_column": target_column,
+        "features": original_features,
+        "encoded_columns": X_dummies.columns.tolist()
+    }
     y = df[target_column]
     
     X_train, X_test, y_train, y_test = train_test_split(X_dummies, y, test_size=0.2, random_state=42)
