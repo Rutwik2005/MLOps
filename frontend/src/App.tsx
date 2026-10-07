@@ -10,11 +10,27 @@ import {
 
 const API_URL = 'http://localhost:8000/api/v1';
 
+let globalLogout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('backend_session_id');
+  window.location.href = '/'; 
+};
+
 axios.interceptors.request.use(config => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      globalLogout();
+    }
+    return Promise.reject(error);
+  }
+);
 
 // --- UI Components ---
 const Card = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
@@ -59,6 +75,9 @@ function Login({ setAuth }: { setAuth: (val: boolean) => void }) {
         formData.append('password', password);
         const res = await axios.post(`${API_URL}/auth/login`, formData);
         localStorage.setItem('token', res.data.access_token);
+        if (res.data.backend_session_id) {
+          localStorage.setItem('backend_session_id', res.data.backend_session_id);
+        }
         setAuth(true);
         navigate('/');
       }
@@ -674,19 +693,68 @@ const NavItem = ({ to, icon: Icon, children }: any) => {
 };
 
 export default function App() {
-  const [auth, setAuth] = useState(!!localStorage.getItem('token'));
+  const [auth, setAuth] = useState(false);
+  const [loadingApp, setLoadingApp] = useState(true);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
+  
+  useEffect(() => {
+    globalLogout = () => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('backend_session_id');
+      setAuth(false);
+    };
+
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setLoadingApp(false);
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const now = Math.floor(Date.now() / 1000);
+        if (payload.exp && now >= payload.exp) {
+          globalLogout();
+          setLoadingApp(false);
+          return;
+        }
+      } catch (e) {
+        globalLogout();
+        setLoadingApp(false);
+        return;
+      }
+
+      const storedSessionId = localStorage.getItem('backend_session_id');
+      if (storedSessionId) {
+        try {
+          const res = await axios.get(`${API_URL}/auth/session`);
+          if (res.data.session_id !== storedSessionId) {
+            globalLogout();
+            setLoadingApp(false);
+            return;
+          }
+        } catch (e) {
+          // Ignore network errors here
+        }
+      }
+
+      setAuth(true);
+      setLoadingApp(false);
+    };
+
+    checkAuth();
+  }, []);
 
   const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
   
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    setAuth(false);
+    globalLogout();
     toast("Logged out");
   };
 
@@ -699,6 +767,17 @@ export default function App() {
       {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
     </button>
   );
+
+  if (loadingApp) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="text-slate-500 animate-pulse flex flex-col items-center">
+          <BrainCircuit size={48} className="mb-4 text-indigo-400" />
+          <p>Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!auth) {
     return <><Toaster position="top-right" />{renderThemeToggle(true)}<Router><Login setAuth={setAuth} /></Router></>;
