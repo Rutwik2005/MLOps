@@ -46,11 +46,26 @@ def train_model(dataset_filename: str, target_column: str, algorithm: str):
     
     # Basic preprocessing
     df = df.dropna() # handle missing basically
-    
+    if df.empty:
+        raise ValueError("Dataset is empty or contains no usable rows after preprocessing.")
+        
+    if target_column not in df.columns:
+        raise ValueError(f"Target column '{target_column}' not found in dataset.")
+        
     X = df.drop(columns=[target_column])
     
-    # Drop identifier columns (where all values are unique)
-    identifiers = [col for col in X.columns if X[col].nunique() == len(X) and str(X[col].dtype) in ['object', 'int64']]
+    # Drop identifier columns safely
+    identifiers = []
+    for col in X.columns:
+        c_lower = str(col).lower()
+        if c_lower in ['id', 'index', 'serial_no', 'sr no', 'sr_no', 'uuid', 'guid']:
+            identifiers.append(col)
+        elif c_lower.endswith('_id') or c_lower.endswith(' id'):
+            identifiers.append(col)
+        # Drop completely unique strings only if dataset is large enough to rule out coincidence
+        elif X[col].nunique() == len(X) and str(X[col].dtype) == 'object' and len(X) > 30:
+            identifiers.append(col)
+            
     if identifiers:
         X = X.drop(columns=identifiers)
         

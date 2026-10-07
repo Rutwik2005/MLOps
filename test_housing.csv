@@ -1,0 +1,16 @@
+id,serial_no,area,bedrooms,bathrooms,parking,location,furnishing,age,price
+1,S1001,1200,3,2,1,Nagpur,Semi-Furnished,5,5000000
+2,S1002,1500,4,3,2,Pune,Fully-Furnished,2,8000000
+3,S1003,800,2,1,0,Mumbai,Unfurnished,10,12000000
+4,S1004,1100,3,2,1,Pune,Semi-Furnished,3,6500000
+5,S1005,950,2,2,1,Nagpur,Unfurnished,8,4200000
+6,S1006,2000,4,4,2,Mumbai,Fully-Furnished,1,25000000
+7,S1007,1300,3,2,1,Nagpur,Semi-Furnished,4,5500000
+8,S1008,1800,4,3,2,Pune,Fully-Furnished,5,9000000
+9,S1009,850,2,1,1,Mumbai,Unfurnished,12,11000000
+10,S1010,1400,3,3,1,Pune,Semi-Furnished,2,7500000
+11,S1011,1000,2,2,1,Nagpur,Fully-Furnished,6,4800000
+12,S1012,2200,4,4,2,Mumbai,Unfurnished,3,22000000
+13,S1013,1150,3,2,1,Pune,Semi-Furnished,4,6200000
+14,S1014,900,2,1,0,Nagpur,Unfurnished,15,3800000
+15,S1015,1600,3,3,2,Mumbai,Fully-Furnished,8,18000000
