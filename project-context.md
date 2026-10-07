@@ -132,7 +132,7 @@ mlops-platform/
 ├── .github/
 │   └── workflows/
 │
-├── docker-compose.yml
+├── compose.yml
 ├── README.md
 └── project-context.md
 ```

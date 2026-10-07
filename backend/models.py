@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, create_engine
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, create_engine, text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -49,9 +49,16 @@ class Deployment(Base):
     name = Column(String)
     model_id = Column(Integer, ForeignKey("app_registered_models.id"))
     endpoint = Column(String)
+    status = Column(String, default="active")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 Base.metadata.create_all(bind=engine)
+
+# Ensure existing deployments table has status column
+with engine.connect() as _conn:
+    _conn.execute(text("ALTER TABLE deployments ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'active'"))
+    _conn.execute(text("UPDATE deployments SET status = 'active' WHERE status IS NULL"))
+    _conn.commit()
 
 # Pydantic Schemas
 class UserCreate(BaseModel):
