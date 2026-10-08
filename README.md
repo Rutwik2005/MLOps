@@ -1,382 +1,449 @@
-# 🚀 Nexus MLOps Platform
+# Nexus MLOps
+
+Nexus MLOps is an end-to-end machine learning operations platform designed to manage the core ML lifecycle. It provides an integrated system for dataset ingestion, model training, experiment tracking, model registration, deployment, and schema-driven real-time prediction.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![MLflow](https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&logo=mlflow&logoColor=white)](https://mlflow.org/)
 [![MinIO](https://img.shields.io/badge/MinIO-C72C48?style=for-the-badge&logo=minio&logoColor=white)](https://min.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 [![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 
-An enterprise-ready, end-to-end cloud-native MLOps platform designed to streamline and automate the entire machine learning lifecycle: from **dataset ingestion and storage (MinIO/S3)**, **experiment tracking & artifact logging (MLflow)**, **model registry & versioning**, to **zero-downtime containerized model deployment** and **interactive real-time REST inference**.
+## Tech Stack
 
----
+| Component | Technology |
+| :--- | :--- |
+| **Frontend** | React + TypeScript + Vite + Tailwind |
+| **Backend** | FastAPI + Python |
+| **Database** | PostgreSQL |
+| **Object Storage** | MinIO |
+| **Experiment Tracking** | MLflow |
+| **ML** | Scikit-learn + XGBoost |
+| **Containerization** | Docker / Docker Compose |
+| **Orchestration** | Kubernetes / Minikube |
 
-## 📑 Table of Contents
+## Workflow
 
-- [Key Features](#-key-features)
-- [System Architecture](#-system-architecture)
-- [Service Topology & Endpoints](#-service-topology--endpoints)
-- [Prerequisites](#-prerequisites)
-- [Quick Start with Docker Compose](#-quick-start-with-docker-compose-recommended)
-- [Manual Local Development Setup](#-manual-local-development-setup)
-- [End-to-End User Workflow](#-end-to-end-user-workflow)
-- [API Reference](#-api-reference)
-- [Environment Variables](#-environment-variables)
-- [Project Directory Structure](#-project-directory-structure)
-- [Troubleshooting & FAQ](#-troubleshooting--faq)
-- [License](#-license)
+**Dataset Upload**  
+Upload CSV files which are stored in MinIO with metadata in PostgreSQL.
+↓  
+**Model Training**  
+Select a target column and algorithm to train a model on the dataset.
+↓  
+**MLflow Experiment Tracking**  
+Track parameters, accuracy, and save model artifacts automatically.
+↓  
+**Model Registration**  
+Register the best experiment runs into the application catalog.
+↓  
+**Model Deployment**  
+Load registered models directly into the FastAPI in-memory serving runtime.
+↓  
+**Schema-driven Prediction**  
+Dynamically generate prediction forms based on the exact features the model was trained on.
 
----
-
-## ✨ Key Features
-
-- **🔐 Robust Authentication & Security**:
-  - JWT-based authentication with bcrypt password hashing.
-  - Automatic session synchronization and secure access token management.
-- **📦 S3-Compatible Dataset Management**:
-  - Direct dataset uploads stored safely in MinIO S3 object storage.
-  - Relational metadata and version tracking persisted in PostgreSQL.
-- **🔬 Automated ML Training & Experiment Tracking**:
-  - Multi-algorithm support out of the box: **Random Forest**, **Logistic Regression**, and **XGBoost**.
-  - Automated feature extraction, categorical dummy encoding, and schema preservation.
-  - Full MLflow integration: automatic logging of metrics (accuracy), parameters, models, and artifacts.
-- **🗃️ Centralized Model Registry**:
-  - Transition top-performing experimental runs into registered models with semantic versioning.
-- **🚀 Dynamic Model Deployment & Serving**:
-  - Instantly deploy registered models as live REST inference endpoints.
-  - Automatic memory caching and runtime model loading from MLflow.
-- **🧠 Dynamic Inference & Schema Inspection**:
-  - Automatic generation of dynamic input forms with dropdowns for categorical features and validation for numeric inputs.
-  - Real-time JSON prediction API with automatic feature matrix alignment.
-- **🎨 Sleek, Modern User Interface**:
-  - Built with React 18, TypeScript, Tailwind CSS, and Lucide icons.
-  - Dark & Light mode theme switching, toast alerts, and responsive metrics dashboard.
-
----
-
-## 🏗️ System Architecture
+## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Client["Frontend Layer"]
-        UI["React + Vite Single Page Application\n(Port 5173)"]
-    end
-
-    subgraph Backend["API & Orchestration Layer"]
-        API["FastAPI REST Server\n(Port 8000)"]
-    end
-
-    subgraph Storage["Storage & Metadata Layer"]
-        DB[("PostgreSQL 15 Database\n(Port 5432)")]
-        MINIO[("MinIO S3 Object Storage\n(Ports 9000 / 9001)")]
-    end
-
-    subgraph MLOps["ML Lifecycle & Serving Layer"]
-        MLFLOW["MLflow Tracking & Registry Server\n(Port 5000)"]
-        ENGINES["Scikit-Learn / XGBoost\nTraining & Inference Engine"]
-    end
-
-    UI -->|HTTP / REST API + JWT| API
-    API -->|Metadata, Users, Deployments| DB
-    API -->|Raw Datasets (.csv)| MINIO
-    API -->|Runs, Metrics, Model Artifacts| MLFLOW
-    MLFLOW -->|Backend Store| DB
-    MLFLOW -->|Artifact Store (s3://mlflow-artifacts)| MINIO
-    API -->|Execute Training / Load Models| ENGINES
+    UI["React Frontend"] --> API["FastAPI Backend"]
+    API --> DB[("PostgreSQL")]
+    API --> MINIO[("MinIO")]
+    API --> MLFLOW["MLflow"]
+    MLFLOW --> MINIO
+    MLFLOW --> DB
 ```
 
----
+## Core Features
 
-## 🌐 Service Topology & Endpoints
+- JWT authentication
+- CSV dataset upload
+- MinIO dataset/object storage
+- PostgreSQL metadata persistence
+- Model training
+- Logistic Regression
+- Random Forest
+- XGBoost
+- MLflow experiment tracking
+- Model artifact storage
+- Application-level model registry
+- Model deployment through FastAPI
+- Schema-driven prediction forms
+- Docker Compose deployment
+- Kubernetes/Minikube deployment
 
-When all services are running, access the various platform components via your browser:
+## Kubernetes / Minikube
 
-| Service | Access URL | Default Credentials | Description |
-| :--- | :--- | :--- | :--- |
-| **Frontend Web App** | [`http://localhost:5173`](http://localhost:5173) | *Create an account on login page* | Full dashboard, dataset manager, experiment tracking & prediction playground |
-| **Backend API (Swagger UI)** | [`http://localhost:8000/docs`](http://localhost:8000/docs) | N/A | Interactive OpenAPI documentation & testing |
-| **MLflow Tracking Server** | [`http://localhost:5000`](http://localhost:5000) | N/A | Experiment visualization, parameters, metrics & model artifacts |
-| **MinIO Web Console** | [`http://localhost:9001`](http://localhost:9001) | **User:** `admin`<br>**Pass:** `password` | MinIO S3 Object Storage bucket & browser |
-| **MinIO S3 API** | `http://localhost:9000` | **Key:** `admin`<br>**Secret:** `password` | S3-compatible object storage API |
-| **PostgreSQL Database** | `localhost:5432` | **User:** `mlops`<br>**Pass:** `mlops_password`<br>**DB:** `mlops_db` | Relational metadata store |
+This is the primary deployment workflow. The currently verified Kubernetes environment is Windows using Docker Desktop, Minikube with the Docker driver, and `kubectl`.
 
----
+### Prerequisites
 
-## 📋 Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Minikube](https://minikube.sigs.k8s.io/docs/start/)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- Git
 
-Ensure you have the following installed on your machine:
+### First-time Setup
 
-- **Docker & Docker Compose** (Recommended): [Install Docker Desktop](https://www.docker.com/products/docker-desktop/) *(Includes Compose v2)*
-- **Git**: [Download Git](https://git-scm.com/)
-- *For manual setup:* **Python 3.11+** and **Node.js 18+ (with npm)**
+Start the cluster:
+```bash
+minikube start
+```
 
----
+If the repository requires or enables the Ingress addon:
+```bash
+minikube addons enable ingress
+```
 
-## ⚡ Quick Start with Docker Compose (Recommended)
+*(Note: The Ingress resource is included in the project, but the currently verified application access method on Windows with the Docker driver is `kubectl port-forward`.)*
 
-Docker Compose configures, provisions, and launches PostgreSQL, MinIO, MLflow, and the FastAPI Backend in containerized isolation.
+### Build and Load Images
 
-### 1. Clone the Repository
+The application uses custom Docker images that need to be built locally and loaded into Minikube's registry.
+
+Build the images:
+```bash
+docker build -t mlops-backend:latest ./backend
+docker build -t mlops-frontend:latest ./frontend
+docker build -t mlops-mlflow:latest ./mlflow
+```
+- `mlops-backend:latest`: Contains the FastAPI app and ML logic.
+- `mlops-frontend:latest`: Contains the React dashboard served via Nginx.
+- `mlops-mlflow:latest`: Contains the MLflow tracking server with database drivers.
+
+Load the images into Minikube:
+```bash
+minikube image load mlops-backend:latest
+minikube image load mlops-frontend:latest
+minikube image load mlops-mlflow:latest
+```
+
+*Note: These images only need to be rebuilt and reloaded when their source code or Dockerfile changes. A normal Minikube restart does not require this step. PostgreSQL and MinIO use standard base images and do not require custom builds.*
+
+### Apply Kubernetes Manifests
+
+Apply the verified manifests in the correct dependency order:
 
 ```bash
-git clone https://github.com/neelwankhade007-rgb/MLOps-Neel.git
-cd MLOps-Neel
+kubectl apply -f kubernetes/config/
+kubectl apply -f kubernetes/volumes/
+
+kubectl apply -f kubernetes/workloads/01-db.yaml
+kubectl apply -f kubernetes/workloads/02-minio.yaml
+kubectl apply -f kubernetes/workloads/03-mlflow.yaml
+kubectl apply -f kubernetes/workloads/04-backend.yaml
+kubectl apply -f kubernetes/workloads/05-frontend.yaml
+
+kubectl apply -f kubernetes/networking/01-ingress.yaml
 ```
 
-### 2. Start Infrastructure and Backend Services
+### Verify Deployment
+
+Check the status of your pods, services, and PVCs:
 
 ```bash
-docker-compose up -d --build
+kubectl get pods -n mlops
+kubectl get services -n mlops
+kubectl get pvc -n mlops
 ```
-*(or using Docker Compose V2: `docker compose up -d --build`)*
 
-### 3. Start Frontend Dashboard
+Expected pods output (startup may take a short amount of time for dependencies to initialize):
+```text
+backend    1/1 Running
+db         1/1 Running
+frontend   1/1 Running
+minio      1/1 Running
+mlflow     1/1 Running
+```
 
-Open a terminal in the `frontend` directory:
+Expected PVCs output:
+```text
+db-pvc       Bound
+minio-pvc    Bound
+```
+
+### Access the Application
+
+The verified, reliable method for accessing the application in a Windows + Docker-driver setup is:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+kubectl port-forward -n mlops service/frontend 8080:80
 ```
 
-The frontend will be live at: **[`http://localhost:5173`](http://localhost:5173)**
+Then open your browser to:
+http://localhost:8080
 
-### 4. Verify Running Services
+**Important Access Details:**
+- Keep the port-forward terminal open while using the application.
+- Pressing `Ctrl+C` stops only the port-forward. It does not stop or delete Kubernetes resources.
+
+*(Do not rely on `minikube service frontend --url` or `minikube tunnel` as your primary access method.)*
+
+### Updating Kubernetes After Code Changes
+
+When you make source code changes, you must update the Kubernetes deployment because the manifests use `imagePullPolicy: Never` for local custom images.
+
+**Backend Changes**
+```bash
+docker build -t mlops-backend:latest ./backend
+minikube image load mlops-backend:latest
+kubectl rollout restart deployment/backend -n mlops
+kubectl rollout status deployment/backend -n mlops
+```
+
+**Frontend Changes**
+```bash
+docker build -t mlops-frontend:latest ./frontend
+minikube image load mlops-frontend:latest
+kubectl rollout restart deployment/frontend -n mlops
+kubectl rollout status deployment/frontend -n mlops
+```
+
+**MLflow Image/Configuration Changes**
+(Only if the MLflow Dockerfile itself changed)
+```bash
+docker build -t mlops-mlflow:latest ./mlflow
+minikube image load mlops-mlflow:latest
+kubectl rollout restart deployment/mlflow -n mlops
+kubectl rollout status deployment/mlflow -n mlops
+```
+
+*Note: PostgreSQL and MinIO do not need rebuilding for ordinary application code changes. Do not restart the whole Minikube cluster for normal code changes.*
+
+### Restarting an Existing Minikube Cluster
+
+If you merely stopped your cluster, you can resume without recreating anything (assuming the Kubernetes resources still exist):
 
 ```bash
-docker-compose ps
+minikube start
+kubectl get pods -n mlops
+kubectl port-forward -n mlops service/frontend 8080:80
 ```
 
-### 5. Managing Services & Logs
+There is no need to rebuild images, reload images, re-apply manifests, or recreate namespaces.
 
-- **View Live Backend Logs**:
-  ```bash
-  docker-compose logs -f backend
-  ```
-- **Stop All Containers**:
-  ```bash
-  docker-compose down
-  ```
-- **Stop Containers and Wipe Volumes** *(clean reset)*:
-  ```bash
-  docker-compose down -v
-  ```
+### Recreating the Kubernetes Stack
 
----
-
-## 🛠️ Manual Local Development Setup
-
-If you wish to run backend and frontend services natively on your host machine:
-
-### 1. Start Support Services (PostgreSQL + MinIO + MLflow)
-You can run the supporting dependencies with Docker while running code locally:
+If you check `kubectl get pods -n mlops` and it returns `No resources found in mlops namespace.`, you must recreate the stack:
 
 ```bash
-docker-compose up -d db minio mlflow
+kubectl apply -f kubernetes/config/
+kubectl apply -f kubernetes/volumes/
+
+kubectl apply -f kubernetes/workloads/01-db.yaml
+kubectl apply -f kubernetes/workloads/02-minio.yaml
+kubectl apply -f kubernetes/workloads/03-mlflow.yaml
+kubectl apply -f kubernetes/workloads/04-backend.yaml
+kubectl apply -f kubernetes/workloads/05-frontend.yaml
+
+kubectl apply -f kubernetes/networking/01-ingress.yaml
 ```
 
-### 2. Configure & Run Backend (FastAPI)
+Then verify the pods and use port-forwarding to access the application again.
+
+### Stopping / Cleanup
+
+**Kubernetes:**
+
+To stop the Minikube cluster while preserving its resources and your data:
+```bash
+minikube stop
+```
+
+To completely reset and destroy the local Minikube cluster and its Kubernetes data:
+```bash
+minikube delete --all
+```
+*(Warning: This removes the entire cluster.)*
+
+**Docker Compose:**
+
+To stop Docker Compose services:
+```bash
+docker compose down
+```
+
+To completely reset Compose, destroying persistent Docker volumes (and therefore stored database and object-storage data):
+```bash
+docker compose down -v
+```
+
+## Docker Compose Development
+
+Docker Compose is the secondary setup workflow, extremely useful for active development and testing of the complete containerized application.
+
+### Prerequisites
+
+- Docker Desktop
+- Git
+
+### Build and Start
+
+Start the application by building the container images:
+```bash
+docker compose up -d --build
+```
+
+Verify that the services are running:
+```bash
+docker compose ps
+```
+
+### Access
+
+- **Frontend:** http://localhost:5173
+- **Backend Swagger:** http://localhost:8000/docs
+- **MLflow:** http://localhost:5000
+- **MinIO Console:** http://localhost:9001
+
+### Updating After Code Changes
+
+When you make changes to your frontend or backend source code, simply rebuild and recreate those specific services without affecting unrelated services:
+
+```bash
+docker compose up -d --build backend frontend
+```
+
+If you modify the MLflow Dockerfile:
+```bash
+docker compose up -d --build mlflow
+```
+
+### Stop / Reset
+
+To safely stop the services:
+```bash
+docker compose down
+```
+
+To perform a complete reset (warning: this permanently destroys persistent database and storage volumes):
+```bash
+docker compose down -v
+```
+
+## Local Development Without Docker
+
+**Fallback / Manual Development**
+
+This is the final fallback setup workflow. It is useful if a developer wants to run the frontend and backend directly on their host machine without containerizing them, providing immediate feedback on source changes.
+
+### Prerequisites
+
+- Git
+- Python 3.11+
+- Node.js + npm
+
+### Supporting Services
+
+Only the supporting infrastructure (database, storage, tracking) is containerized in this workflow. Start them using Docker Compose:
+
+```bash
+docker compose up -d db minio mlflow
+```
+
+### Backend
+
+Open a terminal and set up the Python environment:
 
 ```bash
 cd backend
-
-# Create & activate Python virtual environment
 python -m venv venv
 
-# On Windows:
+# Windows:
 .\venv\Scripts\activate
-# On Linux/macOS:
+# Linux/macOS:
 # source venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
-
-# Run FastAPI with live reloading
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 3. Configure & Run Frontend (React + Vite)
+The Backend Swagger API is available at: http://localhost:8000/docs
+
+### Frontend
+
+Open a completely new terminal window to run the React development server:
 
 ```bash
 cd frontend
-
-# Install Node dependencies
 npm install
-
-# Start Vite dev server
 npm run dev
 ```
 
----
+The Frontend is available at: http://localhost:5173
 
-## 🔄 End-to-End User Workflow
+*(Because the code is running directly on the host, source changes are reflected instantly without rebuilding container images.)*
 
-Follow this step-by-step path to test the entire lifecycle:
+## Project Structure
 
-```text
-1. Register & Login  ➔  2. Upload Dataset  ➔  3. Run Training  ➔  4. Register Model  ➔  5. Deploy Endpoint  ➔  6. Real-Time Inference
-```
+- `backend/` - FastAPI application, ML pipeline logic, and database models.
+- `frontend/` - React SPA dashboard and dynamic prediction interfaces.
+- `kubernetes/` - Config, Volumes, Workloads, and Networking manifests.
+- `mlflow/` - Custom MLflow server Dockerfile.
+- `compose.yml` - Docker Compose configuration.
+- `project-context.md` - High-level architecture specification.
+- `README.md` - Project documentation.
 
-1. **Sign Up / Log In**:
-   - Navigate to [`http://localhost:5173`](http://localhost:5173), switch to **"Need an account? Register"**, enter credentials, and sign in.
-2. **Upload a Dataset**:
-   - Go to the **Datasets** tab.
-   - Upload any CSV (e.g., Titanic classification, Iris, Housing, or Churn dataset).
-   - The dataset is saved to MinIO bucket `datasets` and cataloged in PostgreSQL.
-3. **Train an ML Model**:
-   - Go to the **Training & Experiments** tab.
-   - Select your uploaded dataset, input the exact target column name (e.g., `Survived` or `target`), and select an algorithm (**Random Forest**, **XGBoost**, or **Logistic Regression**).
-   - Click **"Launch Training Job"**.
-   - Review the resulting accuracy and MLflow Run ID.
-4. **Register the Best Model**:
-   - Go to the **Model Registry** tab.
-   - Select the winning experiment run and give it a model registry name (e.g., `titanic-classifier-v1`).
-5. **Deploy the Model**:
-   - Go to the **Deployments** tab.
-   - Select your registered model and assign a deployment name (e.g., `titanic-prod`).
-   - Click **"Deploy Model"**.
-6. **Perform Real-Time Predictions**:
-   - In the **Deployments** tab, choose your active deployment.
-   - The UI automatically analyzes the model schema from MLflow and renders dynamic input fields (numerical inputs, dropdowns for categorical features).
-   - Click **"Predict"** to view instant inference output.
-   - Alternatively, query the REST API endpoint directly using cURL or Python!
+## API / Swagger
 
----
+**FastAPI Swagger:** http://localhost:8000/docs
 
-## 🔌 API Reference
+Major groups:
+- Authentication
+- Datasets
+- Training / Experiments
+- Models
+- Deployments / Predictions
 
-The FastAPI backend provides interactive OpenAPI documentation at [`http://localhost:8000/docs`](http://localhost:8000/docs).
+## Current Limitations / Future Work
 
-### Core Endpoints
+- Dataset versioning
+- Advanced data validation/profiling
+- Model comparison
+- Model drift monitoring
+- Automated retraining
+- Per-model Kubernetes deployments
+- CI/CD
 
-#### Authentication
-- `POST /api/v1/auth/register` — Register a new platform user account.
-- `POST /api/v1/auth/login` — Authenticate and receive a Bearer JWT access token.
-- `GET /api/v1/auth/session` — Retrieve backend instance session ID.
+## Troubleshooting
 
-#### Datasets
-- `POST /api/v1/datasets` — Upload multipart CSV dataset file to MinIO.
-- `GET /api/v1/datasets` — List all cataloged datasets.
-
-#### Training & Experiments
-- `POST /api/v1/training/jobs` — Trigger model training pipeline (`dataset_id`, `target_column`, `algorithm`).
-- `GET /api/v1/experiments` — List experiment runs with logged accuracy & MLflow Run IDs.
-
-#### Model Registry
-- `POST /api/v1/models` — Register a model from a successful experiment run.
-- `GET /api/v1/models` — List all registered models and versions.
-
-#### Deployments & Inference
-- `POST /api/v1/models/{model_id}/deploy` — Create a live deployment instance.
-- `GET /api/v1/deployments` — List active model deployments.
-- `GET /api/v1/deployments/{deployment_name}/schema` — Retrieve feature schema & categorical value sets.
-- `POST /api/v1/predict/{deployment_name}` — Execute real-time prediction.
-
-### Example Prediction Request via cURL
-
+### Pods are not running
 ```bash
-curl -X POST "http://localhost:8000/api/v1/predict/titanic-prod" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "features": {
-         "Pclass": 3,
-         "Sex": "female",
-         "Age": 22,
-         "SibSp": 1,
-         "Parch": 0,
-         "Fare": 7.25,
-         "Embarked": "S"
-       }
-     }'
+kubectl get pods -n mlops
 ```
 
-**Response:**
-```json
-{
-  "prediction": "1",
-  "deployment": "titanic-prod"
-}
-```
-
----
-
-## ⚙️ Environment Variables
-
-The backend accepts the following environment variables (configured with defaults in `docker-compose.yml`):
-
-| Variable | Default (Docker) | Default (Local) | Description |
-| :--- | :--- | :--- | :--- |
-| `DATABASE_URL` | `postgresql://mlops:mlops_password@db:5432/mlops_db` | `postgresql://mlops:mlops_password@localhost:5432/mlops_db` | PostgreSQL connection string |
-| `MINIO_ENDPOINT` | `minio:9000` | `localhost:9000` | MinIO S3 API host & port |
-| `MINIO_ACCESS_KEY` | `admin` | `admin` | MinIO root access key |
-| `MINIO_SECRET_KEY` | `password` | `password` | MinIO root secret key |
-| `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | `http://localhost:5000` | MLflow tracking server URI |
-| `AWS_ACCESS_KEY_ID` | `admin` | `admin` | S3 client access key for MLflow artifacts |
-| `AWS_SECRET_ACCESS_KEY`| `password` | `password` | S3 client secret key for MLflow artifacts |
-| `MLFLOW_S3_ENDPOINT_URL`| `http://minio:9000` | `http://localhost:9000` | MinIO S3 endpoint for MLflow artifacts |
-
----
-
-## 📁 Project Directory Structure
-
-```text
-MLOps-Neel/
-├── backend/
-│   ├── Dockerfile             # Backend container image definition
-│   ├── main.py                # FastAPI routes, auth, schema parsing & prediction handlers
-│   ├── ml_utils.py            # MinIO client, training pipelines (RF/LR/XGB), MLflow logging
-│   ├── models.py              # SQLAlchemy ORM models & Pydantic request/response schemas
-│   └── requirements.txt       # Python dependencies (FastAPI, MLflow, Scikit-learn, XGBoost, etc.)
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx            # Main React UI with Auth, Datasets, Training, Registry, Deployments
-│   │   ├── main.tsx           # Application entry point
-│   │   └── index.css          # Tailwind CSS styling and theme definitions
-│   ├── package.json           # Frontend dependencies & scripts
-│   ├── tsconfig.json          # TypeScript configuration
-│   └── vite.config.ts         # Vite build configuration
-├── docker-compose.yml         # Multi-service composition (PostgreSQL, MinIO, MLflow, Backend)
-├── project-context.md         # Comprehensive architectural reference & specification
-└── README.md                  # Project overview, setup guide, and documentation
-```
-
----
-
-## ❓ Troubleshooting & FAQ
-
-<details>
-<summary><b>1. MLflow fails to connect to MinIO or PostgreSQL on first startup</b></summary>
-
-Docker Compose includes health checks to ensure PostgreSQL and MinIO are healthy before MLflow starts. If you experience startup ordering issues on a fresh machine, run:
+### Frontend cannot be opened
+Use the reliable port-forward method:
 ```bash
-docker-compose up -d db minio
-# Wait 5 seconds, then:
-docker-compose up -d
+kubectl port-forward -n mlops service/frontend 8080:80
 ```
-</details>
+Then visit: http://localhost:8080
 
-<details>
-<summary><b>2. How do I reset the entire platform database and storage?</b></summary>
+### Code changes are not visible in Kubernetes
+This requires a three-step process:
+`docker build` → `minikube image load` → `kubectl rollout restart`
 
-To wipe all data and start completely fresh:
+Example for the backend:
 ```bash
-docker-compose down -v
-docker-compose up -d --build
+docker build -t mlops-backend:latest ./backend
+minikube image load mlops-backend:latest
+kubectl rollout restart deployment/backend -n mlops
 ```
-</details>
 
-<details>
-<summary><b>3. Why are categorical feature options automatically populated in the UI?</b></summary>
+### Kubernetes namespace is empty
+If `No resources found in mlops namespace.` is returned, refer to the "Recreating the Kubernetes Stack" section to re-apply the manifests.
 
-During training, `ml_utils.py` saves an `explicit_schema.json` artifact to MLflow containing detected column types and unique categorical categories. When viewing a deployment, the frontend queries `/api/v1/deployments/{name}/schema` to render exact form controls dynamically.
-</details>
+### Complete reset
+To completely wipe the Minikube cluster (data loss warning):
+```bash
+minikube delete --all
+```
 
----
-
-## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
+To completely wipe Docker Compose volumes (data loss warning):
+```bash
+docker compose down -v
+```

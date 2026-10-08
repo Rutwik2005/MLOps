@@ -204,7 +204,12 @@ def deploy_model(model_id: int, req: DeploymentCreate, db: Session = Depends(get
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
         
-    deployment = Deployment(name=req.name, model_id=model_id, endpoint=f"/api/v1/predict/{req.name}")
+    deployment = Deployment(
+        name=req.name,
+        model_id=model_id,
+        endpoint=f"/api/v1/predict/{req.name}",
+        status="active"
+    )
     db.add(deployment)
     db.commit()
     db.refresh(deployment)
