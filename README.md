@@ -183,7 +183,7 @@ docker compose down -v
 
 ## ☸️ Deployment: Kubernetes (Minikube)
 
-The project includes production-ready Kubernetes manifests designed and verified on **Minikube**.
+The project includes Kubernetes manifests designed and verified on a local **Minikube** environment (Windows + Docker driver).
 
 ### Manifest Organization
 The Kubernetes manifests are separated into dedicated directories:
@@ -194,12 +194,23 @@ The Kubernetes manifests are separated into dedicated directories:
 
 ### 1. Start Minikube & Enable Ingress
 
+Start Minikube:
+
 ```bash
 minikube start
+```
+
+If Ingress is part of the documented cluster setup, you can enable the ingress addon:
+
+```bash
 minikube addons enable ingress
 ```
 
+*Note: While Ingress is deployed, the application is currently accessed through `kubectl port-forward`, not through the Ingress URL.*
+
 ### 2. Build Container Images & Load into Minikube
+
+*(Note: Custom images only need to be rebuilt and loaded when the application code has changed or the images are missing from Minikube. You do not need to do this on every restart.)*
 
 Build the custom images locally and load them into Minikube's image cache:
 
@@ -215,51 +226,144 @@ minikube image load mlops-frontend:latest
 minikube image load mlops-mlflow:latest
 ```
 
-### 3. Apply Manifests in Ordered Sequence
-
-Apply the manifests in proper dependency order:
+### 3. Apply Configuration
 
 ```bash
-# 1. Namespace, ConfigMap, and Secret
 kubectl apply -f kubernetes/config/
-
-# 2. Persistent Volume Claims
-kubectl apply -f kubernetes/volumes/
-
-# 3. Workloads (PostgreSQL, MinIO, MLflow, Backend, Frontend)
-kubectl apply -f kubernetes/workloads/
-
-# 4. Ingress Routing
-kubectl apply -f kubernetes/networking/
 ```
 
-### 4. Verify Cluster Resources
+### 4. Apply Persistent Volume Claims
 
 ```bash
-# Verify pods in the mlops namespace
+kubectl apply -f kubernetes/volumes/
+```
+
+### 5. Apply Workloads
+
+Apply the workloads in this verified startup sequence:
+
+```bash
+kubectl apply -f kubernetes/workloads/01-db.yaml
+kubectl apply -f kubernetes/workloads/02-minio.yaml
+kubectl apply -f kubernetes/workloads/03-mlflow.yaml
+kubectl apply -f kubernetes/workloads/04-backend.yaml
+kubectl apply -f kubernetes/workloads/05-frontend.yaml
+```
+
+### 6. Apply Networking
+
+```bash
+kubectl apply -f kubernetes/networking/01-ingress.yaml
+```
+
+### 7. Verify Cluster Resources
+
+```bash
 kubectl get pods -n mlops
-
-# Verify services
 kubectl get services -n mlops
-
-# Verify PVCs
 kubectl get pvc -n mlops
-
-# Verify ingress
 kubectl get ingress -n mlops
 ```
 
-### 5. Accessing the Application on Minikube
+Expected pod state:
 
-To access the frontend service directly via Minikube tunnel or service URL:
+```text
+backend    1/1 Running
+db         1/1 Running
+frontend   1/1 Running
+minio      1/1 Running
+mlflow     1/1 Running
+```
+
+Expected PVC state:
+
+```text
+db-pvc       Bound
+minio-pvc    Bound
+```
+
+### 8. Access the Application
+
+The preferred and verified local access method for the current Windows + Docker-driver Minikube environment is port forwarding:
 
 ```bash
-# Expose frontend service URL
-minikube service frontend -n mlops --url
-
-# Alternatively, enable minikube tunnel for Ingress / LoadBalancer access
-minikube tunnel
+kubectl port-forward -n mlops service/frontend 8080:80
 ```
+
+Then access the application at:
+
+[http://localhost:8080](http://localhost:8080)
+
+**Important Access Details:**
+- Keep the port-forward terminal open while using the application.
+- Pressing `Ctrl+C` stops the port-forward only; it does not delete your Kubernetes deployment.
+- This is the preferred local access method for the current Windows + Docker-driver Minikube environment.
+- Do NOT rely on `minikube service frontend --url` as the primary access method.
+- Do NOT use `minikube tunnel` as the normal application access method.
+
+### Restarting the Existing Cluster
+
+If you have stopped Minikube and want to resume working on the existing cluster and `mlops` resources, you do NOT need to recreate the namespace, PVCs, deployments, or rebuild images. Simply start it back up:
+
+```bash
+minikube start
+kubectl get pods -n mlops
+kubectl port-forward -n mlops service/frontend 8080:80
+```
+
+### Recreating the Kubernetes Stack
+
+If you check `kubectl get pods -n mlops` and see:
+
+```text
+No resources found in mlops namespace.
+```
+
+In that case, recreate the stack:
+
+```bash
+kubectl apply -f kubernetes/config/
+kubectl apply -f kubernetes/volumes/
+
+kubectl apply -f kubernetes/workloads/01-db.yaml
+kubectl apply -f kubernetes/workloads/02-minio.yaml
+kubectl apply -f kubernetes/workloads/03-mlflow.yaml
+kubectl apply -f kubernetes/workloads/04-backend.yaml
+kubectl apply -f kubernetes/workloads/05-frontend.yaml
+
+kubectl apply -f kubernetes/networking/01-ingress.yaml
+```
+
+Then verify:
+
+```bash
+kubectl get pods -n mlops
+kubectl get pvc -n mlops
+```
+
+Then access using:
+
+```bash
+kubectl port-forward -n mlops service/frontend 8080:80
+```
+
+### Stopping Minikube
+
+When you are done working, you can safely stop Minikube. This preserves your cluster state (deployments, volumes, etc.) for next time:
+
+```bash
+minikube stop
+```
+
+### Complete Cluster Cleanup (Optional)
+
+If you want to completely destroy the Minikube cluster and remove all data (including the database and uploaded datasets) to start fresh:
+
+```bash
+# Delete the minikube cluster entirely
+minikube delete --all
+```
+*Note: Only run this if you want to wipe everything and start from a fresh installation.*
 
 ---
 
@@ -478,6 +582,38 @@ The backend assigns a new `BACKEND_SESSION_ID` (UUID) upon each process start. W
 docker compose down -v
 docker compose up -d --build
 ```
+</details>
+
+<details>
+<summary><b>5. Why does minikube service frontend --url give ERR_CONNECTION_REFUSED?</b></summary>
+
+On Windows with the Docker driver, the Minikube service URL is a temporary tunnel and depends on the associated terminal process. The current verified and recommended method is:
+
+```bash
+kubectl port-forward -n mlops service/frontend 8080:80
+```
+
+Then access:
+
+[http://localhost:8080](http://localhost:8080)
+</details>
+
+<details>
+<summary><b>6. All pods are Running, but I cannot open the frontend.</b></summary>
+
+Verify your pod status:
+
+```bash
+kubectl get pods -n mlops
+```
+
+Then use port forwarding to access the frontend:
+
+```bash
+kubectl port-forward -n mlops service/frontend 8080:80
+```
+
+Make sure to keep the port-forward terminal open while accessing the application.
 </details>
 
 ---
